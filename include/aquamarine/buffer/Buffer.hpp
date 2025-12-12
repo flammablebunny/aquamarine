@@ -19,7 +19,7 @@ namespace Aquamarine {
     };
 
     struct SDMABUFAttrs {
-        bool                      success = false;
+        bool                      success  = false;
         Hyprutils::Math::Vector2D size;
         uint32_t                  format   = 0; // fourcc
         uint64_t                  modifier = 0;
@@ -28,6 +28,11 @@ namespace Aquamarine {
         std::array<uint32_t, 4>   offsets = {0};
         std::array<uint32_t, 4>   strides = {0};
         std::array<int, 4>        fds     = {-1, -1, -1, -1};
+
+        // Cross-GPU support: buffer originated from a different GPU than the compositor's primary
+        // When true, this buffer requires blitting through an intermediate buffer or CPU copy
+        bool                      crossGPU = false;
+        int                       sourceDevice = -1;  // DRM render node fd of the source GPU, -1 if same as primary
     };
 
     struct SSHMAttrs {
