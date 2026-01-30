@@ -594,6 +594,12 @@ bool Aquamarine::CDRMBackend::initResources() {
 }
 
 bool Aquamarine::CDRMBackend::shouldBlit() {
+    // AQ_NO_BLIT=1 forces direct import without blit - for testing cross-GPU direct scanout
+    static auto NO_BLIT = envEnabled("AQ_NO_BLIT");
+    if (NO_BLIT) {
+        TRACE(backend->log(AQ_LOG_TRACE, "drm: AQ_NO_BLIT=1, skipping multi-GPU blit"));
+        return false;
+    }
     return primary;
 }
 
@@ -2069,10 +2075,14 @@ void Aquamarine::CDRMFB::import() {
     }
 
     // TODO: check format
+    backend->backend->log(AQ_LOG_DEBUG, std::format("drm: CDRMFB::import: attempting import of {}x{} fmt {} mod 0x{:x}",
+        attrs.size.x, attrs.size.y, fourccToName(attrs.format), attrs.modifier));
+
     for (int i = 0; i < attrs.planes; ++i) {
         int ret = drmPrimeFDToHandle(backend->gpu->fd, attrs.fds.at(i), &boHandles[i]);
         if (ret) {
-            backend->backend->log(AQ_LOG_ERROR, "drm: drmPrimeFDToHandle failed");
+            backend->backend->log(AQ_LOG_ERROR, std::format("drm: drmPrimeFDToHandle failed for plane {}: {} (fd {})",
+                i, strerror(errno), attrs.fds.at(i)));
             drop();
             return;
         }
@@ -2083,7 +2093,8 @@ void Aquamarine::CDRMFB::import() {
     id = submitBuffer();
 
     if (!id) {
-        backend->backend->log(AQ_LOG_ERROR, "drm: Failed to submit a buffer to KMS");
+        backend->backend->log(AQ_LOG_ERROR, std::format("drm: Failed to submit buffer to KMS: {}x{} fmt {} mod 0x{:x}",
+            attrs.size.x, attrs.size.y, fourccToName(attrs.format), attrs.modifier));
         buffer->attachments.add(makeShared<CDRMBufferUnimportable>());
         drop();
         return;
@@ -2182,7 +2193,8 @@ uint32_t Aquamarine::CDRMFB::submitBuffer() {
                                                 fourccToName(attrs.format), attrs.modifier, drmModifierToName(attrs.modifier))));
         if (drmModeAddFB2WithModifiers(backend->gpu->fd, attrs.size.x, attrs.size.y, attrs.format, boHandles.data(), attrs.strides.data(), attrs.offsets.data(), mods.data(),
                                        &newID, DRM_MODE_FB_MODIFIERS)) {
-            backend->backend->log(AQ_LOG_ERROR, "drm: Failed to submit a buffer with drmModeAddFB2WithModifiers");
+            backend->backend->log(AQ_LOG_ERROR, std::format("drm: drmModeAddFB2WithModifiers failed: {} ({}x{} fmt {} mod 0x{:x})",
+                strerror(errno), attrs.size.x, attrs.size.y, fourccToName(attrs.format), attrs.modifier));
             return 0;
         }
     } else {
@@ -2196,7 +2208,8 @@ uint32_t Aquamarine::CDRMFB::submitBuffer() {
                                                 fourccToName(attrs.format), attrs.modifier, drmModifierToName(attrs.modifier))));
 
         if (drmModeAddFB2(backend->gpu->fd, attrs.size.x, attrs.size.y, attrs.format, boHandles.data(), attrs.strides.data(), attrs.offsets.data(), &newID, 0)) {
-            backend->backend->log(AQ_LOG_ERROR, "drm: Failed to submit a buffer with drmModeAddFB2");
+            backend->backend->log(AQ_LOG_ERROR, std::format("drm: drmModeAddFB2 failed: {} ({}x{} fmt {} mod 0x{:x})",
+                strerror(errno), attrs.size.x, attrs.size.y, fourccToName(attrs.format), attrs.modifier));
             return 0;
         }
     }
