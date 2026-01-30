@@ -1679,7 +1679,9 @@ bool Aquamarine::CDRMOutput::commitState(bool onlyTest) {
                 backend->backend->log(AQ_LOG_DEBUG, std::format("drm: Disabling output {}", name));
         }
 
-        if (STATE.enabled && (NEEDS_RECONFIG || (COMMITTED & COutputState::eOutputStateProperties::AQ_OUTPUT_STATE_BUFFER)) && connector->isPageFlipPending) {
+        // In immediate/tearing mode, allow overlapping commits - the kernel may replace the pending flip
+        bool isImmediate = STATE.presentationMode == AQ_OUTPUT_PRESENTATION_IMMEDIATE;
+        if (STATE.enabled && (NEEDS_RECONFIG || (COMMITTED & COutputState::eOutputStateProperties::AQ_OUTPUT_STATE_BUFFER)) && connector->isPageFlipPending && !isImmediate) {
             backend->backend->log(AQ_LOG_ERROR, "drm: Cannot commit when a page-flip is awaiting");
             return false;
         }
