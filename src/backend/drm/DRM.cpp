@@ -600,6 +600,11 @@ bool Aquamarine::CDRMBackend::shouldBlit() {
         TRACE(backend->log(AQ_LOG_TRACE, "drm: AQ_NO_BLIT=1, skipping multi-GPU blit"));
         return false;
     }
+    // Can't blit without a renderer (e.g., AQ_SECONDARY_NO_RENDERER=1)
+    if (primary && !rendererState.renderer) {
+        TRACE(backend->log(AQ_LOG_TRACE, "drm: No renderer on secondary GPU, skipping blit"));
+        return false;
+    }
     return primary;
 }
 
@@ -616,6 +621,18 @@ bool Aquamarine::CDRMBackend::initMgpu() {
     if (!rendererState.allocator) {
         backend->log(AQ_LOG_ERROR, "drm: initMgpu: no allocator");
         return false;
+    }
+
+    // AQ_SECONDARY_NO_RENDERER=1 skips renderer creation on secondary GPUs
+    // This is useful when the secondary GPU is dedicated to client rendering (e.g., game)
+    // and shouldn't have compositor EGL contexts stealing resources
+    static auto SECONDARY_NO_RENDERER = envEnabled("AQ_SECONDARY_NO_RENDERER");
+    if (primary && SECONDARY_NO_RENDERER) {
+        backend->log(AQ_LOG_DEBUG, "drm: initMgpu: skipping renderer on secondary GPU (AQ_SECONDARY_NO_RENDERER=1)");
+        // Still need to build formats from primary for dmabuf negotiation
+        if (primary->rendererState.renderer)
+            buildGlFormats(primary->rendererState.renderer->formats);
+        return true;
     }
 
     rendererState.renderer = CDRMRenderer::attempt(backend.lock(), gpu->renderNodeFd >= 0 ? gpu->renderNodeFd : gpu->fd);
